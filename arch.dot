@@ -1,0 +1,57 @@
+digraph Architecture {
+  node [shape=box]
+  input options 
+  checkpy 
+  astparse 
+  checktypes 
+  poperrors
+  visit 
+  visitnode 
+  visitchildren checknode
+  emiterrors text json
+
+  checkpy [label="check.py"];
+  input [label="File Input"];
+  options[label="Command-line Options"];
+  astparse [label="Parse AST"];
+  visitchildren [label="Visit Children"];
+  checknode [label="Typecheck Node"]
+  visit [label="Visit AST Node"];
+  checktypes [label="PyBDTC"];
+  poperrors [label="Populate Errors"];
+  emiterrors [label="Emit Errors"];
+  text [label="Text"];
+  json [label="JSON"];
+  visitnode[label = "Node-Specific Visit Function"];
+  
+  input -> checkpy;
+  options -> checkpy;
+
+  checkpy -> astparse
+  astparse -> checktypes
+  
+  checktypes -> visit
+  visit->checktypes [style=dashed; constraint=false]
+
+  visit->visitnode
+  visitnode->visit [style=dashed]
+  
+  visitnode->visitchildren
+  visitchildren->visitnode[style=dashed; constraint=false]
+  visitchildren->checknode
+  visitnode->checknode
+  checknode->visitnode [style=dashed]
+
+
+  visitchildren -> visit;
+  visit -> visitchildren [style=dashed];
+
+
+  poperrors->visit[style=dashed]
+  visit->poperrors[style=dashed]
+
+  checktypes->emiterrors[style=dashed]
+  emiterrors->text[style=dashed]
+  emiterrors->json[style=dashed]
+  
+}
