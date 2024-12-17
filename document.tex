@@ -181,20 +181,20 @@ This section describes of related and/or existing work.
 This could be scientific or scholarly, but may also be a survey of existing products/games.
 The goal of this section is to put your project in the context of what has already been done.
 \end{comment}
-\begin{comment}
-THEORY
- Bidirectional typechecking
- LambdaPy
-\end{comment}
 
-\begin{comment}
 \subsection{Theoretical Work}
 
+A rich literature exists on the subject of types, typechecking, and type systems. However, much of this work is theoretical and is based upon generalizations of a model of computation known as simply-typed lambda calculus. While these theoretical models match up well with some programming languages, notably Haskell, ML, and Coq, their correspondence with Python is not always clear. These models tend to view programs and data in terms of primitive types and function types and they provide operations with neat mathematical properties that can be used to create new types and reason about types. While Python is able to fit into these models, the inherent flexibility of the language makes it an uncomfortable correspondence. With that being said, there are three theoretical ideas that I've incorporated into this project.
 
-Operational Semantics for Python\cite{politz_python_2013}
-Bidirectional typechecking\cite{dunfield_bidirectional_2022}
-Gradual Typing \cite{garcia2016abstracting}
-\end{comment}
+\subsubsection{Gradual Typing}
+As mentioned before, Python uses a gradual type system. This is an idea that has been discussed to a fair extent in the literature. The core difference between previous static and dynamic type systems is the addition of the unknown type (usually denoted $?$) which lies outside the type hierarchy. The original idea was introduced in 2006 by Siek and Taha \cite{siek_gradual_nodate} however it lacked a concept of materialization. Rather, it simply left unknown types as unknown and left it up to the language to dynamically check these types at runtime. The concept was more fully developed by Garcia et al. in 2016 \cite{garcia2016abstracting} who added the concept of materialization. This allowed for a more formal definition of consistency between types, providing a full formal gradual type system on which to base future research.
+
+\subsubsection{Bidirectional Typechecking}
+The core inspiration for the underlying algorithm of my typechecker is bidirectional typechecking as laid out in \cite{dunfield_bidirectional_2022}. The idea behind it is that in many cases, typechecking can be split into two separate processes: type checking (i.e., going from type to value) and type inference (i.e., going from value to type). The paper highlights the visual similarities between bidirectional typechecking and gradual typing however there is a crucial difference. Bidirectional typechecking modifies context based on information known during the typechecking step while gradual typing modifies context based on runtime information. While the effects of those two appear similar, this crucial difference of where the modification is happening makes a difference.
+
+
+\subsubsection{$\lambda_\pi$}
+While I did not incorporate many of their ideas into my project, $\lambda_\pi$, an operational semantics for the Python language \cite{politz_python_2013}. This paper is unique in that it attempts to define a full theoretical model to interpret the Python language. Specifically, their treatment and explanations of what makes certain aspects of Python difficult to formalize was a very helpful reference during the initial stages of development and planning.
 
 
 \subsection{Other Typecheckers}
@@ -223,9 +223,9 @@ I have attempted to stay as true to the theoretical underpinnings of Python's ty
 
 I visit the AST nodes via depth first search. The order in which the nodes are visited is context-dependent -- by default, nodes are visited left-to-right (that is, the order in which they appear in the source code) however this is not done in all cases. Variable assignments are checked right to left, with the right-hand side of the assignment being checked first so that its type can be inferred. This way, we have all the information needed to either infer or check the type of the left-hand side. Child nodes are always checked before their parent node so as to have complete information. 
 
-The typechecker has two main data structures, \verb|Context| and \verb|Variable|. Each \verb|Variable| represents an object in the code. Types, functions, and normal variables are all stored using the \verb|Variable| structure. This reflects how Python internally sees them. \verb|Variable|s store their name, scope, type, and fields. Their type is a reference to another instance of a \verb|Variable| with the \verb|Variable| representing the type \verb|type| being self-referential. Fields are stored as dictionaries with the field name as the key and the \verb|Variable| representing the type of the field as the value.
+The typechecker has two main data structures, \verb|Context| and \verb|Variable|. Each \verb|Variable| represents an object in the code. Types, functions, and normal variables are all stored using the \verb|Variable| structure. This reflects how Python internally sees them. \verb|Variable|s store their name, scope, and type. Their type is a reference to another instance of a \verb|Variable| with the \verb|Variable| representing the type \verb|type| being self-referential. 
 
-Most objects use the base \verb|Variable| class however there are a few that refer to special subclasses of \verb|Variable|. The \verb|__call__| field refers to a special subclass that contains information about the function arguments and return type. Union types refer to a subclass of \verb|Variable| with multiple types. Finally, the fields of generic types refer to a subclass of \verb|Variable| that allows for partial information about types. 
+The specifics of various types of types are stored in an optional internal variable in the \verb|Variable| data structure as a subclass of a \verb|Type| base class. There is a \verb|Callable| type inheriting from the \verb|Type| base class that stores function arguments. Additionally, there is a child class that implements \verb|Union|s. Lastly, there is a \verb|Any| class that represents the gradual type. To capture the consistent subtyping relationship between types without adding much extra work, the \verb|Any| type is only ever equal to itself. For any non-\verb|Any| type it compares as both a subtype and supertype, but not an equivalent type.
 
 The \verb|Context| class stores information about where the typechecker is and what it has already seen. The \verb|Context| class contains things such as the current scope, the filename, and all information necessary for qualified names (function name, class name, etc). It also contains information about the return type of the current scope to aid in checking functions. Most importantly, it contains the lookup table of all values in scope which can be used to make judgements. This includes previously defined variables and types as well as built-in types and functions.
 
@@ -247,13 +247,40 @@ One evaluation method that I considered was fuzzing. While fuzzing would be the 
 
 \section{Results and Discussion}
 
-My typechecker is capable of checking Python programs for various type errors. It is capable of checking assignments, function definitions, and function calls. It is aware of scope and locality and it supports both structural and nominal typing, user-defined data types, and rudimentary generics. It can infer types for untyped variables and supports union types.
+\subsection{Goals}
 
-There were a few things that I made the decision not to include. I also decided not to care about modules and imports as those can get very complicated very quickly in nontrivial projects. In addition, I decided not to support manual modifications to dunder attributes such as \verb|__dict__| and \verb|__slots__| and manual calls to certain dunder methods such as \verb|__getattr__|. I also did not attempt to include any asynchronous features of Python. Finally, I only implemented generics as far as needed to use the \verb|list|, \verb|dict|, and \verb|tuple| built-in types. Finally, I did not implement exceptions nor did I implement the \verb|Never| and \verb|NoReturn| types.
+I had four main goals for my typechecker:
+\begin{enumerate}
+    \item Check the consistency of statically annotated types in Python programs. Specifically, my goal is to check types annotated with built-in types and classes derived from built-in types. 
+    \item Have an understanding of scope and locality.
+    \item Conservatively infer types in places without explicit static type annotations and there is a clear type capable of being inferred. For example, when given \verb|a = 3|, the typechecker should be able to infer that \verb|a| is an \verb|int|.
+    \item Understand gradual types and forms and check for assignability using consistent subtyping as criteria. 
+    \end{enumerate}
 
-One thing that I was unable to include was a comprehensive treatment of multiple inheritance. Python allows classes to inherit from multiple distinct types. In simple cases, this is fairly easy to support however things get more complicated when the types conflict. Suppose that there are two classes \verb|A| and \verb|B| such that they both define an attribute \verb|x|. \verb|A| defines \verb|x| to be an \verb|int| whereas \verb|B| defines \verb|x| to be a \verb|str|. We can construct a third class \verb|C| that inherits from both \verb|A| and \verb|B|. Clearly \verb|C| must have an attribute called \verb|x| however what type that attribute is depends on something called the method resolution order (often abbreviated as MRO). Python uses an algorithm called C3 that transforms a complicated dependency graph into a linear order \cite{pythonmro}. However, this information is not present in the AST and so I would have to implement the algorithm by hand which, while possible, I determined to be out of the scope of this project. Instead, I simply implemented conflicting attributes as union types of all the possibilities. So, while the attribute \verb|C.x| would in reality have a single type, my type checker judges it as a union, in this case, \verb+int | str+.
+\subsection{Non-Goals}
 
+Additionally, I had a few features of Python that I considered non-goals of my project:
+\begin{enumerate}
+    \item Imports and modules
+    \item Literal types
+    \item Classes derived from the \verb|typing.Generic| base class.
+    \item Asynchronous functions.
+    \item Manual manipulation of dunder methods and attributes (e.g. \verb|__slots__|)
+\end{enumerate}
 
+\subsection{Current Results}
+
+My typechecker is currently capable of checking Python programs for a variety of type errors. It is capable of walking through an AST and checking annotated assignments as well as inferring types for unannotated assignments with primitive types. It is capable of checking user-defined functions and understands scope in function bodies. It can also perform simple return type checks as well as check default arguments. Union types are fully implemented, including the \verb|Optional| type which is defined as a Union with None. Finally, my typechecker has a rudimentary understanding of the gradual form \verb|Any| and is capable of checking it when it appears on its own as well as when it appears in partially-defined types such as callable. 
+
+With that being said, there are things that I was unable to do. Firstly, I was unable to implement classes nor was I able to implement certain important types such as \verb|list| and \verb|dict|. Furthermore, due to this feature-incompleteness I was unable to perform rigorous testing beyond hand-written test cases.
+
+\subsection{Discussion}
+
+The main reason that I was unable to implement classes and thus \verb|list|s and \verb|dict|s was that early on in development, I had assumed that classes, functions, and primitive types could be implemented separately and thus I organized my data around that assumption. This, of course, was not a good assumption to make. As mentioned previously, Python views everything as \verb|object|s. One consequence of this is that the lines between any constructs within the language are incredibly blurry. Classes, when called as type constructors, are functions. In addition, primitive types such as \verb|int| and \verb|str| are also classes with their own methods. As I began implementing more and more, I began to spend more time implementing special cases for each type of type. In addition, because I was treating all of these types as separate, I had to manually compare every type with every other type which, besides being tedious, was an error-prone process. 
+
+\subsection{Future Work}
+
+As of writing, I am currently working on reworking the way that types are stored to fit more closely with the way Python sees them. Rather than having separate classes for different types of types, I am instead taking a field-based approach where types (and, indeed, all constructs in the language) are determined by their methods, attributes, and the values they hold. This greatly simplifies things, especially in terms of comparisons. Instead of having to have special cases for type constructors, built-in functions, and regular functions when checking function definitions, I can simply check their common \verb|__call__| field. In addition, structural types now become a simple containment check, rather than the more complicated process they would be previously. In addition, this method will increase the flexibility of the system, allowing for the easier implementation of features I had previously not considered adding such as imports, modules, and literal types.
 
 \section{Ethical Considerations}
 \begin{comment}
@@ -321,6 +348,12 @@ This section will demonstrate that you have thought through the basics of how yo
     }
     \label{fig:architecture}
 \end{figure}
+
+A diagram of the code architecture is shown in Figure \ref{fig:architecture}. The core of the program are the \verb|visit_*| functions. Each AST node is passed to a top-level \verb|visit| function which then dispatches it to a node-specific visit function. For example, annotated assignments (\verb|ast.AnnAssign|) are dispatched to \verb|visit_AnnAssign|. These functions are defined in the \verb|pybdtc.nodes| folder where they are sorted based on the categories used in the Python \verb|ast| documentation. These visit functions may then recursively call the top-level \verb|visit| function on child nodes. 
+
+There are two main data structures that control the flow of information in the project. The \verb|Context| data structure flows "down" from parent node to child node. New variables are added to the context when they come into scope. When a new scope is reached, a copy of the current context is made which is then modified by the child nodes. After the child nodes return, the old context returns, deleting everything that is no longer in scope. 
+
+The \verb|Errors| data structure flows "up" from the child nodes to the parent nodes. Each \verb|visit| function has its own \verb|Errors| data structure that it hen adds its errors to. This data structure is then returned by the \verb|visit| functions where it is then merged into the parent node's visit functions. When it is possible to do so, the errors are populated with filenames and line numbers to provide context as to where the error is occurring. When the program terminates, the final \verb|Errors| data structure contains all of the consolidated type errors encountered in the program and may emit them in the format of the user's choice.
 \printbibliography
 
 \end{document}
